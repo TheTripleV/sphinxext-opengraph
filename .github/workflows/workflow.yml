@@ -10,8 +10,21 @@ on:
     tags:
       - '*'
 jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+    - uses: actions/checkout@v2
+    - uses: actions/setup-python@v2
+      with:
+        python-version: 3.8
+    - name: Black
+      run: |
+        pip install black
+        black --check --diff .
+        
   test-extension:
     runs-on: ubuntu-latest
+    needs: [check]
     strategy:
       matrix:
         python-version: ['3.6', '3.7',  '3.8', 'pypy3']
