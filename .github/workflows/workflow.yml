@@ -15,17 +15,34 @@ jobs:
     steps:
     - uses: actions/checkout@v2
     - uses: actions/setup-python@v2
-      with:
-        python-version: 3.8
-    - name: Black
-      run: |
-        pip install black
-        black --check --exclude /docs --diff .
+    - uses: psf/black@stable
 
-  test-extension:
+  build:
+    runs-on: ubuntu-latest
+    - uses: actions/checkout@v2
+    - uses: actions/setup-python@v2
+      with:
+        python-version: 3.6
+    - name: Install Dependencies
+      run: |
+        python -m pip install --upgrade pip
+        pip install -r ./dev-requirements.txt
+    - name: Build PyPI Wheel
+    run: |
+      python setup.py sdist
+      python setup.py bdist_wheel
+    - name: Upload build artifacts
+      uses: actions/upload-artifact@v2
+      with:
+        name: dist
+        path: dist
+
+  test:
+    needs: [build]
     runs-on: ubuntu-latest
     strategy:
       matrix:
+        os: [ubuntu-latest, windows-latest, macos-latest]
         python-version: ['3.6', '3.7',  '3.8', '3.9', 'pypy3']
     steps:
       - uses: actions/checkout@v2
@@ -33,21 +50,23 @@ jobs:
         uses: actions/setup-python@v2
         with:
           python-version: ${{ matrix.python-version }}
-      - name: Install dependencies
+
+      - name: Download build artifacts
+        uses: actions/download-artifact@v2
+        with:
+          name: dist
+          path: dist
+
+      - name: Install package
         run: |
-          set -xe
-          python -VV
-          python -m site
-          python -m pip install --upgrade pip setuptools wheel
-          python -m pip install -r dev-requirements.txt
-      - name: Install Package
-        run: |
-          python -m pip install .
+          pip install dist/*.whl
+
       - name: Run Tests for ${{ matrix.python-version }}
         run: |
           python -m pytest -vv
 
   build-docs:
+    needs: [build]
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v2
@@ -64,25 +83,15 @@ jobs:
           make html
 
   pypi-release:
-    needs: test-extension
+    needs: [build, test]
     runs-on: ubuntu-latest
     if: contains(github.ref, 'refs/tags/') && github.repository_owner	== 'wpilibsuite'
     steps:
-      - uses: actions/checkout@v2
+      - name: Download build artifacts
+        uses: actions/download-artifact@v2
         with:
-          fetch-depth: 0
-      - name: Set up Python
-        uses: actions/setup-python@v2
-        with:
-          python-version: '3.7'
-      - name: Install Dependencies
-        run: |
-          python -m pip install --upgrade pip
-          pip install -r ./dev-requirements.txt
-      - name: Build PyPI Wheel
-        run: |
-          python setup.py sdist
-          python setup.py bdist_wheel
+          name: dist
+          path: dist
       - name: Publish a Python distribution to PyPI
         uses: pypa/gh-action-pypi-publish@master
         with:
